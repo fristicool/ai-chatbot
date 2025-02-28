@@ -1,11 +1,11 @@
 'use client';
 
-import type { ChatRequestOptions, Message } from 'ai';
+import { tool, type ChatRequestOptions, type Message } from 'ai';
 import cx from 'classnames';
 import { AnimatePresence, motion } from 'framer-motion';
 import { memo, useMemo, useState } from 'react';
 
-import type { Vote } from '@/lib/db/schema';
+import type { Vote } from '@prisma/client';
 
 import { DocumentToolCall, DocumentToolResult } from './document';
 import {
@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { MessageEditor } from './message-editor';
 import { DocumentPreview } from './document-preview';
 import { MessageReasoning } from './message-reasoning';
+import ImageSkeleton from './image-skeleton';
 
 const PurePreviewMessage = ({
   chatId,
@@ -145,6 +146,7 @@ const PurePreviewMessage = ({
                   if (state === 'result') {
                     const { result } = toolInvocation;
 
+                    {/* Full Response Component */}
                     return (
                       <div key={toolCallId}>
                         {toolName === 'getWeather' ? (
@@ -166,6 +168,8 @@ const PurePreviewMessage = ({
                             result={result}
                             isReadonly={isReadonly}
                           />
+                        ) : toolName === 'generateImageTool' ? (
+                          <img src={result.imageUrl} className='w-full rounded-3xl' />
                         ) : (
                           <pre>{JSON.stringify(result, null, 2)}</pre>
                         )}
@@ -179,6 +183,7 @@ const PurePreviewMessage = ({
                         skeleton: ['getWeather'].includes(toolName),
                       })}
                     >
+                      {/* Skeleton */}
                       {toolName === 'getWeather' ? (
                         <Weather />
                       ) : toolName === 'createDocument' ? (
@@ -195,6 +200,8 @@ const PurePreviewMessage = ({
                           args={args}
                           isReadonly={isReadonly}
                         />
+                      ) : toolName === 'generateImageTool' ? (
+                        <ImageSkeleton args={args} />
                       ) : null}
                     </div>
                   );

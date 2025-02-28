@@ -2,15 +2,12 @@ import type {
   CoreAssistantMessage,
   CoreToolMessage,
   Message,
-  TextStreamPart,
-  ToolInvocation,
-  ToolSet,
+  ToolInvocation
 } from 'ai';
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import type { Message as DBMessage, Document } from '@/lib/db/schema';
-
+import type { Message as DBMessage, Document } from '@prisma/client';
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -85,15 +82,34 @@ function addToolMessageToChat({
   });
 }
 
+// Define a helper type for the message content
+interface MessageContent {
+  type: string;
+  text?: string;
+  toolCallId?: string;
+  toolName?: string;
+  args?: any;
+  reasoning?: string;
+}
+
 export function convertToUIMessages(
   messages: Array<DBMessage>,
 ): Array<Message> {
   return messages.reduce((chatMessages: Array<Message>, message) => {
     if (message.role === 'tool') {
-      return addToolMessageToChat({
-        toolMessage: message as CoreToolMessage,
-        messages: chatMessages,
-      });
+      // Cast the message to CoreToolMessage after validating its structure
+      const toolMessage = message as unknown as CoreToolMessage;
+      // Validate that content is in the expected format before passing it
+      if (Array.isArray(toolMessage.content) && 
+          toolMessage.content.every(item => 
+            typeof item === 'object' && item !== null && 'toolCallId' in item)) {
+        return addToolMessageToChat({
+          toolMessage,
+          messages: chatMessages,
+        });
+      }
+      // If validation fails, just return the messages unchanged
+      return chatMessages;
     }
 
     let textContent = '';
@@ -103,18 +119,23 @@ export function convertToUIMessages(
     if (typeof message.content === 'string') {
       textContent = message.content;
     } else if (Array.isArray(message.content)) {
-      for (const content of message.content) {
-        if (content.type === 'text') {
-          textContent += content.text;
-        } else if (content.type === 'tool-call') {
-          toolInvocations.push({
-            state: 'call',
-            toolCallId: content.toolCallId,
-            toolName: content.toolName,
-            args: content.args,
-          });
-        } else if (content.type === 'reasoning') {
-          reasoning = content.reasoning;
+      for (const item of message.content) {
+        // Safely check if item is an object and has a type property
+        if (typeof item === 'object' && item !== null) {
+          const content = item as unknown as MessageContent;
+          
+          if (content.type === 'text' && content.text) {
+            textContent += content.text;
+          } else if (content.type === 'tool-call' && content.toolCallId && content.toolName) {
+            toolInvocations.push({
+              state: 'call',
+              toolCallId: content.toolCallId,
+              toolName: content.toolName,
+              args: content.args || {},
+            });
+          } else if (content.type === 'reasoning' && content.reasoning) {
+            reasoning = content.reasoning;
+          }
         }
       }
     }
@@ -124,8 +145,8 @@ export function convertToUIMessages(
       role: message.role as Message['role'],
       content: textContent,
       reasoning,
-      toolInvocations,
-    });
+      toolInvocations: toolInvocations.length > 0 ? toolInvocations : undefined,
+    } as Message);
 
     return chatMessages;
   }, []);
@@ -133,6 +154,11 @@ export function convertToUIMessages(
 
 type ResponseMessageWithoutId = CoreToolMessage | CoreAssistantMessage;
 type ResponseMessage = ResponseMessageWithoutId & { id: string };
+
+interface ReasoningContent {
+  type: 'reasoning';
+  reasoning: string;
+}
 
 export function sanitizeResponseMessages({
   messages,
@@ -146,7 +172,7 @@ export function sanitizeResponseMessages({
   for (const message of messages) {
     if (message.role === 'tool') {
       for (const content of message.content) {
-        if (content.type === 'tool-result') {
+        if ('toolCallId' in content) {
           toolResultIds.push(content.toolCallId);
         }
       }
@@ -167,8 +193,11 @@ export function sanitizeResponseMessages({
     );
 
     if (reasoning) {
-      // @ts-expect-error: reasoning message parts in sdk is wip
-      sanitizedContent.push({ type: 'reasoning', reasoning });
+      const reasoningContent: ReasoningContent = { 
+        type: 'reasoning', 
+        reasoning 
+      };
+      sanitizedContent.push(reasoningContent as any);
     }
 
     return {
@@ -178,7 +207,8 @@ export function sanitizeResponseMessages({
   });
 
   return messagesBySanitizedContent.filter(
-    (message) => message.content.length > 0,
+    (message) => 
+      Array.isArray(message.content) ? message.content.length > 0 : true,
   );
 }
 
@@ -210,7 +240,7 @@ export function sanitizeUIMessages(messages: Array<Message>): Array<Message> {
 
   return messagesBySanitizedToolInvocations.filter(
     (message) =>
-      message.content.length > 0 ||
+      (typeof message.content === 'string' ? message.content.length > 0 : true) ||
       (message.toolInvocations && message.toolInvocations.length > 0),
   );
 }

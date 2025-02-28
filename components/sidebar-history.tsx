@@ -3,7 +3,6 @@
 import { isToday, isYesterday, subMonths, subWeeks } from 'date-fns';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import type { User } from 'next-auth';
 import { memo, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import useSWR from 'swr';
@@ -46,9 +45,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
-import type { Chat } from '@/lib/db/schema';
+import type { Chat } from "@prisma/client";
 import { fetcher } from '@/lib/utils';
 import { useChatVisibility } from '@/hooks/use-chat-visibility';
+import { useUser } from '@clerk/nextjs';
 
 type GroupedChats = {
   today: Chat[];
@@ -71,7 +71,7 @@ const PureChatItem = ({
 }) => {
   const { visibilityType, setVisibilityType } = useChatVisibility({
     chatId: chat.id,
-    initialVisibility: chat.visibility,
+    initialVisibility: chat.visibility === 'private' ? 'private' : 'public',
   });
 
   return (
@@ -149,7 +149,8 @@ export const ChatItem = memo(PureChatItem, (prevProps, nextProps) => {
   return true;
 });
 
-export function SidebarHistory({ user }: { user: User | undefined }) {
+export function SidebarHistory() {
+  const { user } = useUser();
   const { setOpenMobile } = useSidebar();
   const { id } = useParams();
   const pathname = usePathname();

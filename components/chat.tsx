@@ -2,11 +2,10 @@
 
 import type { Attachment, Message } from 'ai';
 import { useChat } from 'ai/react';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 
 import { ChatHeader } from '@/components/chat-header';
-import type { Vote } from '@/lib/db/schema';
 import { fetcher, generateUUID } from '@/lib/utils';
 
 import { Artifact } from './artifact';
@@ -15,6 +14,8 @@ import { Messages } from './messages';
 import { VisibilityType } from './visibility-selector';
 import { useArtifactSelector } from '@/hooks/use-artifact';
 import { toast } from 'sonner';
+import { Vote } from '@prisma/client';
+import { Loader2Icon } from 'lucide-react';
 
 export function Chat({
   id,
@@ -65,7 +66,7 @@ export function Chat({
   const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
 
   return (
-    <>
+    <Suspense fallback={<Loader2Icon className="animate-spin" />}>
       <div className="flex flex-col min-w-0 h-dvh bg-background">
         <ChatHeader
           chatId={id}
@@ -120,6 +121,6 @@ export function Chat({
         votes={votes}
         isReadonly={isReadonly}
       />
-    </>
+    </ Suspense>
   );
 }

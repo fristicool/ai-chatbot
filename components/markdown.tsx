@@ -36,6 +36,21 @@ const components: Partial<Components> = {
       </span>
     );
   },
+  p: ({ node, children, ...props }) => {
+    // Check if the paragraph's only child is a <pre> element
+    if (node) {
+      if (
+        node.children &&
+        node.children.length === 1 &&
+        // @ts-ignore: Suppress error for tagName property
+        node.children[0].tagName === 'pre'
+      ) {
+        return <>{children}</>;
+      }  
+    }
+    
+    return <p {...props}>{children}</p>;
+  },
   a: ({ node, children, ...props }) => {
     return (
       // @ts-expect-error

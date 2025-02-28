@@ -5,7 +5,6 @@ import {
   streamText,
 } from 'ai';
 
-import { auth } from '@/app/(auth)/auth';
 import { myProvider } from '@/lib/ai/models';
 import { systemPrompt } from '@/lib/ai/prompts';
 import {
@@ -25,6 +24,8 @@ import { createDocument } from '@/lib/ai/tools/create-document';
 import { updateDocument } from '@/lib/ai/tools/update-document';
 import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
+import { generateImageTool } from '@/lib/ai/tools/generate-image';
+import { currentUser } from '@clerk/nextjs/server';
 
 export const maxDuration = 60;
 
@@ -36,11 +37,12 @@ export async function POST(request: Request) {
   }: { id: string; messages: Array<Message>; selectedChatModel: string } =
     await request.json();
 
-  const session = await auth();
-
-  if (!session || !session.user || !session.user.id) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  const user = await currentUser();
+  
+    if (!user) {
+      return Response.json('Unauthorized!', { status: 401 });
+    }
+  
 
   const userMessage = getMostRecentUserMessage(messages);
 
@@ -52,7 +54,7 @@ export async function POST(request: Request) {
 
   if (!chat) {
     const title = await generateTitleFromUserMessage({ message: userMessage });
-    await saveChat({ id, userId: session.user.id, title });
+    await saveChat({ id, userId: user.id, title });
   }
 
   await saveMessages({
@@ -74,20 +76,22 @@ export async function POST(request: Request) {
                 'createDocument',
                 'updateDocument',
                 'requestSuggestions',
+                'generateImageTool',
               ],
         experimental_transform: smoothStream({ chunking: 'word' }),
         experimental_generateMessageId: generateUUID,
         tools: {
           getWeather,
-          createDocument: createDocument({ session, dataStream }),
-          updateDocument: updateDocument({ session, dataStream }),
+          createDocument: createDocument({ userId: user.id, dataStream }),
+          updateDocument: updateDocument({ userId: user.id, dataStream }),
           requestSuggestions: requestSuggestions({
-            session,
+            userId: user.id,
             dataStream,
           }),
+          generateImageTool,
         },
         onFinish: async ({ response, reasoning }) => {
-          if (session.user?.id) {
+          if (user.id) {
             try {
               const sanitizedResponseMessages = sanitizeResponseMessages({
                 messages: response.messages,
@@ -136,16 +140,20 @@ export async function DELETE(request: Request) {
     return new Response('Not Found', { status: 404 });
   }
 
-  const session = await auth();
+  const user = await currentUser();
 
-  if (!session || !session.user) {
-    return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return Response.json('Unauthorized!', { status: 401 });
   }
 
   try {
     const chat = await getChatById({ id });
 
-    if (chat.userId !== session.user.id) {
+    if (!chat) {
+      return new Response('Not Found', { status: 404 });
+    }
+
+    if (chat.userId !== user.id) {
       return new Response('Unauthorized', { status: 401 });
     }
 
